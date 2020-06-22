@@ -1,6 +1,6 @@
 ---
 title: "Course grades"
-output: html_document
+output: github_document
 ---
 
 ```{r setup, include=FALSE}
@@ -22,6 +22,7 @@ Load grade data from [here](https://docs.google.com/spreadsheets/d/1teXA9Uhtl3Ku
 ```{r load-data, message = FALSE, cache = TRUE, warning = FALSE}
 roster <- read_sheet("https://docs.google.com/spreadsheets/d/1teXA9Uhtl3KuXbIZBEeDb6v9-Y9uE01lpoQ9fx_dS0Y/edit?usp=sharing") %>%
   clean_names() %>%
+  # not an actual numeric variable
   mutate(student_id = as.character(student_id))
 ```
 
