@@ -1,0 +1,135 @@
+---
+title: "Course grades"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load-packages, message = FALSE, warning = FALSE}
+library(googlesheets4)
+library(janitor)
+library(tidyverse)
+library(gt)
+library(knitr)
+```
+
+## Setup
+
+Load grade data from [here](https://docs.google.com/spreadsheets/d/1teXA9Uhtl3KuXbIZBEeDb6v9-Y9uE01lpoQ9fx_dS0Y/edit?usp=sharing).
+
+```{r load-data, message = FALSE, cache = TRUE, warning = FALSE}
+roster <- read_sheet("https://docs.google.com/spreadsheets/d/1teXA9Uhtl3KuXbIZBEeDb6v9-Y9uE01lpoQ9fx_dS0Y/edit?usp=sharing") %>%
+  clean_names() %>%
+  mutate(student_id = as.character(student_id))
+```
+
+Set maximum scores and weights for each assignment type.
+
+```{r set-parameters}
+# max scores for each assignment type
+hw_max <- 50
+lab_max <- 20
+project_max <- 100
+quiz_max <- 10
+
+# weights for each assignment type
+hw_weight <- 0.50
+lab_weight <- 0.20
+project_weight <- 0.20
+quiz_weight <- 0.10
+```
+
+Create two custom functions: drop lowest and take average (`mean_drop_lowest()`) and count number of missing assignments (`count_missing()`).
+
+```{r fun-mean_drop_lowest}
+mean_drop_lowest <- function(x){
+  y <- x[-which(x == min(x))[1]]
+  mean(y)
+}
+```
+
+```{r fun-count_missing}
+count_missing <- function(x){
+  sum(x == 0)
+}
+```
+
+Calculate grades, dropping lowest score of each type of assignment.
+
+```{r calculate}
+graded_roster <- roster %>%
+  # replace all NAs with 0s
+  replace(is.na(.), 0) %>%
+  rowwise() %>%
+  # calculate n_missing
+  mutate(
+    n_missing = count_missing(c_across(where(is.numeric)))
+  ) %>%
+  # calculate averages, weighted averages, and overall score
+  mutate(
+    hw_avg = mean_drop_lowest(c_across(starts_with("hw"))),
+    lab_avg = mean_drop_lowest(c_across(starts_with("lab"))),
+    quiz_avg = mean_drop_lowest(c_across(starts_with("quiz")))
+  ) %>%
+  mutate(
+    hw = hw_avg / hw_max * 100,
+    lab = lab_avg / lab_max * 100,
+    quiz = quiz_avg / quiz_max * 100,
+    overall = (hw * hw_weight) + 
+              (lab * lab_weight) + 
+              (quiz * quiz_weight) + 
+              (project * project_weight)
+  ) %>%
+  # reorder columns
+  select(student_id, name, starts_with("hw"), starts_with("lab"), starts_with("quiz"), project, overall, n_missing) %>%
+  select(-hw_avg, -quiz_avg, -lab_avg) %>%
+  ungroup()
+```
+
+## Grading roster
+
+```{r display}
+graded_roster %>%
+  arrange(desc(overall)) %>%
+  gt() %>%
+  tab_spanner(label = "HW", columns = vars(hw_1, hw_2, hw_3, hw)) %>%
+  tab_spanner(label = "Lab", columns = vars(lab_1, lab_2, lab_3, lab)) %>%
+  tab_spanner(label = "Quiz", columns = vars(quiz_1, quiz_2, quiz_3, quiz)) %>%
+  tab_style(
+    style = cell_text(weight = "bold"),
+    locations = cells_body(columns = vars(hw, lab, quiz, project, overall))
+    ) %>%
+  tab_style(
+    style = cell_fill(color = "pink"),
+    locations = cells_body(rows = overall < 40)
+    ) %>%
+  tab_style(
+    style = cell_fill(color = "orange"),
+    locations = cells_body(rows = overall >= 40 & overall < 60)
+    ) %>%
+  tab_style(
+    style = cell_text(color = "red"),
+    locations = cells_body(
+      columns = vars(n_missing),
+      rows = n_missing > 2)
+  )
+```
+
+## Grading distribution
+
+```{r}
+ggplot(graded_roster, aes(x = overall)) +
+  geom_histogram(binwidth = 10) +
+  xlim(0, 100)
+```
+
+
+```{r distribution}
+graded_roster %>%
+  mutate(range = cut(overall, breaks = seq(0, 100, 10))) %>%
+  count(range) %>%
+  kable()
+```
+
